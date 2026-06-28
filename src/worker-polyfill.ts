@@ -1,114 +1,106 @@
 /*
-	Create a fake worker thread of IE and other browsers
-	Remember: Only pass in primitives, and there is none of the native security happening
-	Only Supports Dedicated Web Workers
+  A single-threaded Worker polyfill for IE and other old browsers.
+  Dedicated Workers only. The worker script is fetched with synchronous XHR
+  and eval'd in-process, inside its own scope object so that `self`,
+  `postMessage`, `onmessage`, etc. behave like a real worker global.
+  Remember: messages are structured-cloned, but this is NOT a real thread and
+  provides none of the native security isolation.
 */
-import {getHTTPObject, isFunction} from "./utils";
+import { fetchScriptSync, getGlobal } from "./utils";
+import { installEventTarget } from "./event-target";
+import { createMessageEvent, createErrorEvent } from "./events";
+import { structuredCloneShim } from "./clone";
+import { createWorkerScope, WorkerScope } from "./worker-scope";
 
-// @ts-ignore
-Worker = function (scriptFile: any) {
-  let self = this;
-  let __timer: number = null;
-  let __text: any = null;
-  let __fileContent: any = null;
+interface PolyfillWorkerOptions {
+  type?: string;
+  name?: string;
+  credentials?: string;
+}
 
-  // External methods (worker.METHOD)
+const WorkerPolyfill = function (
+  this: any,
+  scriptFile: string,
+  options?: PolyfillWorkerOptions,
+) {
+  const self = this;
+  const opts = options || {};
+  const glob = getGlobal();
+
+  installEventTarget(self);
   self.onmessage = null;
   self.onerror = null;
+  self.onmessageerror = null;
 
-  // Child methods
-  let onmessage;
-  let onerror;
+  let terminated = false;
+  const inbox: any[] = [];
+  let scope: WorkerScope | null = null;
 
-  // Child runs this itself and calls for it's parent to be notified
-  const postMessage = function (data: any) {
-    if ( isFunction(self.onmessage) ) {
-      return self.onmessage({ data });
+  // worker -> parent
+  const toParent = function (data: any) {
+    if (terminated) {
+      return;
     }
-    return false;
+    glob.setTimeout(function () {
+      if (terminated) {
+        return;
+      }
+      self.dispatchEvent(createMessageEvent(data, self));
+    }, 0);
   };
 
-  // Method that starts the threading
-  self.postMessage = function (text: any) {
-    __text = text;
-    __iterate();
-    return true;
+  const stop = function () {
+    terminated = true;
+    inbox.length = 0;
   };
 
-  // Child can call this method instead of assigning methods directly
-  const addEventListener = function (type, callback) {
-    switch(type) {
-      case 'message':
-        onmessage = callback;
-        break;
-      case 'error':
-        onerror = callback;
-        break;
+  // Drain queued parent->worker messages one at a time, asynchronously, so
+  // ordering is preserved and delivery never blocks the caller.
+  const drain = function () {
+    if (terminated || !scope || inbox.length === 0) {
+      return;
     }
-  };
-
-  // Parent can call this method instead of assigning methods directly
-  self.addEventListener = function (type, callback) {
-    switch(type) {
-      case 'message':
-        self.onmessage = callback;
-        break;
-      case 'error':
-        self.onerror = callback;
-        break;
-    }
-  };
-
-  const __iterate = function () {
-    // Execute on a timer so we don't block (well as good as we can get in a single thread)
-    __timer = setTimeout(__onIterate, 1);
-    return true;
-  };
-
-  const __onIterate = function () {
+    const data = inbox.shift();
     try {
-      if ( isFunction(onmessage) ) {
-        onmessage({ data: __text });
-      }
-      return true;
+      scope.__deliver(data);
     } catch (e) {
-      if ( isFunction(onerror) ) {
-        return onerror(e);
-      }
+      self.dispatchEvent(createErrorEvent(e, self));
     }
-    return false;
+    if (!terminated && inbox.length > 0) {
+      glob.setTimeout(drain, 0);
+    }
+  };
+
+  // parent -> worker
+  self.postMessage = function (data: any) {
+    if (terminated) {
+      return;
+    }
+    inbox.push(structuredCloneShim(data));
+    glob.setTimeout(drain, 0);
   };
 
   self.terminate = function () {
-    clearTimeout(__timer);
-    return true;
+    stop();
   };
 
-  const importScripts = function () {
-    // Turn arguments from pseudo-array in to array in order to iterate it
-    const params = Array.prototype.slice.call(arguments);
-
-    for (let i = 0, j = params.length; i < j; i++) {
-      const script = document.createElement('script');
-      script.src = params[i];
-      script.setAttribute('type', 'text/javascript');
-      document.getElementsByTagName('head')[0].appendChild(script)
-    }
-  };
-
-  const http = getHTTPObject();
-  http.open("GET", scriptFile, false);
-  http.send(null);
-
-  if (http.readyState == 4) {
-    const strResponse = http.responseText;
-
-    if (http.status !== 404 && http.status !== 500) {
-      __fileContent = strResponse;
-      // IE functions will become delagates of the instance of Worker
-      eval(__fileContent);
-    }
+  // Load and start the worker. Failures (load or top-level eval) dispatch an
+  // async error event so handlers attached right after construction still fire.
+  try {
+    const code = fetchScriptSync(scriptFile);
+    scope = createWorkerScope(opts.name || "", toParent, stop);
+    scope.__evalScript(code);
+  } catch (e) {
+    glob.setTimeout(function () {
+      self.dispatchEvent(createErrorEvent(e, self));
+    }, 0);
   }
-
-  return true;
 };
+
+// Install as the global Worker only when there is no native implementation.
+const glob = getGlobal();
+if (typeof glob.Worker === "undefined") {
+  glob.Worker = WorkerPolyfill;
+}
+
+export { WorkerPolyfill };
