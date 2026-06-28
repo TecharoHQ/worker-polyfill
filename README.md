@@ -75,6 +75,11 @@ visible to the main worker script (or vice versa). Use `self.X = ...`
 assignments (which land on the worker scope) to share values across scripts
 loaded via `importScripts()`.
 
+The bare identifier `arguments` (and the internal parameter names
+`__worker_scope__` and `__worker_src__`) are shadowed inside top-level
+worker code due to the Function constructor wrapper—avoid using `arguments`
+as an identifier in worker scripts.
+
 ## Development
 
 ```bash
