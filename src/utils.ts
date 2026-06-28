@@ -46,8 +46,7 @@ const fetchScriptSync = (url: string): string => {
 
   const ok =
     http.readyState === 4 &&
-    http.status !== 404 &&
-    http.status !== 500;
+    (http.status === 0 || (http.status >= 200 && http.status < 300));
 
   if (!ok) {
     throw new Error(

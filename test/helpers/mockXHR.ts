@@ -2,8 +2,10 @@
 // worker scripts with sync XHR; jsdom can't fetch arbitrary URLs, so tests
 // register script bodies here and the mock serves them.
 type ScriptMap = { [url: string]: string };
+type ScriptWithStatusMap = { [url: string]: { code: string; status: number } };
 
 let scripts: ScriptMap = {};
+let scriptsWithStatus: ScriptWithStatusMap = {};
 let failUrls: string[] = [];
 
 class MockXHR {
@@ -23,7 +25,11 @@ class MockXHR {
       this.responseText = "";
       return;
     }
-    if (Object.prototype.hasOwnProperty.call(scripts, this.url)) {
+    if (Object.prototype.hasOwnProperty.call(scriptsWithStatus, this.url)) {
+      const entry = scriptsWithStatus[this.url];
+      this.status = entry.status;
+      this.responseText = entry.code;
+    } else if (Object.prototype.hasOwnProperty.call(scripts, this.url)) {
       this.status = 200;
       this.responseText = scripts[this.url];
     } else {
@@ -37,12 +43,17 @@ export function setScript(url: string, code: string): void {
   scripts[url] = code;
 }
 
+export function setScriptWithStatus(url: string, code: string, status: number): void {
+  scriptsWithStatus[url] = { code, status };
+}
+
 export function failScript(url: string): void {
   failUrls.push(url);
 }
 
 export function resetScripts(): void {
   scripts = {};
+  scriptsWithStatus = {};
   failUrls = [];
 }
 

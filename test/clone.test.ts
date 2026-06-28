@@ -35,5 +35,10 @@ describe("structuredCloneShim", () => {
     const d = structuredCloneShim(new Date(1000));
     expect(d instanceof Date).toBe(true);
     expect(d.getTime()).toBe(1000);
+
+    const re = structuredCloneShim(/foo/gi);
+    expect(re instanceof RegExp).toBe(true);
+    expect(re.source).toBe("foo");
+    expect(re.flags).toBe("gi");
   });
 });
