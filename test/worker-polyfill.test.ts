@@ -79,6 +79,8 @@ describe("WorkerPolyfill", () => {
     expect(err).not.toBe(null);
     expect(err.type).toBe("error");
     expect(err.message).toBe("boom");
+    // Verify the error event was dispatched even though we swallow listener throws
+    expect(err.error).toBeDefined();
   });
 
   it("fires the error event when the script fails to load", () => {
@@ -131,5 +133,26 @@ describe("WorkerPolyfill", () => {
     w.postMessage("go");
     vi.runAllTimers();
     expect(got).toBe(42);
+  });
+
+  it("does not strand messages when both onmessage and onerror throw", () => {
+    setScript("thrower.js", "onmessage = function(){ throw new Error('worker boom'); };");
+    const w = makeWorker("thrower.js");
+    const errors: any[] = [];
+    const messages: any[] = [];
+    w.onerror = (e: any) => {
+      errors.push(e.message);
+      throw new Error("parent boom");
+    };
+    w.onmessage = (e: any) => messages.push(e.data);
+    w.postMessage("first");
+    w.postMessage("second");
+    vi.runAllTimers();
+    // First message should trigger error path (swallowed, no propagation)
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(errors[0]).toBe("worker boom");
+    // Second message should also be processed (not stranded)
+    expect(errors.length).toBeGreaterThanOrEqual(2);
+    expect(errors[1]).toBe("worker boom");
   });
 });

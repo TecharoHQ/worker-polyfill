@@ -1,5 +1,5 @@
-import { isFunction } from "./utils";
-import { PolyfillEvent } from "./events";
+import { isFunction, getGlobal } from "./utils";
+import { PolyfillEvent, createErrorEvent } from "./events";
 
 // A minimal EventTarget that also supports legacy `on<type>` handler
 // properties. Both the Worker (parent) object and the worker global scope
@@ -10,8 +10,10 @@ interface EventTargetLike {
   dispatchEvent: (event: PolyfillEvent) => boolean;
 }
 
-const installEventTarget = (host: any): EventTargetLike => {
+const installEventTarget = (host: any, options?: { catchErrors: boolean }): EventTargetLike => {
   const listeners: { [type: string]: any[] } = {};
+  const catchErrors = options?.catchErrors !== false; // default to true
+  let inErrorDispatch = false;
 
   host.addEventListener = function (type: string, callback: any) {
     if (!isFunction(callback)) {
@@ -42,7 +44,16 @@ const installEventTarget = (host: any): EventTargetLike => {
 
     const handler = host["on" + event.type];
     if (isFunction(handler)) {
-      handler.call(host, event);
+      if (catchErrors) {
+        try {
+          handler.call(host, event);
+        } catch (e) {
+          // Swallow handler errors to prevent queue stranding and spec violations.
+          // Listener errors are intentionally not re-thrown to maintain fire-and-forget semantics.
+        }
+      } else {
+        handler.call(host, event);
+      }
     }
 
     const list = listeners[event.type];
@@ -50,7 +61,16 @@ const installEventTarget = (host: any): EventTargetLike => {
       // Snapshot so a listener removing another mid-dispatch is safe.
       const snapshot = list.slice();
       for (let i = 0; i < snapshot.length; i++) {
-        snapshot[i].call(host, event);
+        if (catchErrors) {
+          try {
+            snapshot[i].call(host, event);
+          } catch (e) {
+            // Swallow listener errors to prevent queue stranding and spec violations.
+            // Listener errors are intentionally not re-thrown to maintain fire-and-forget semantics.
+          }
+        } else {
+          snapshot[i].call(host, event);
+        }
       }
     }
     return true;

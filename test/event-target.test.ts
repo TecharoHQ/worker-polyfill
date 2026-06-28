@@ -52,4 +52,17 @@ describe("installEventTarget", () => {
     expect(seen.currentTarget).toBe(host);
     expect(seen.target).toBe(host);
   });
+
+  it("continues dispatching after a listener throws", () => {
+    const host: any = {};
+    installEventTarget(host);
+    const calls: string[] = [];
+    host.addEventListener("message", () => {
+      calls.push("first");
+      throw new Error("boom");
+    });
+    host.addEventListener("message", () => calls.push("second"));
+    host.dispatchEvent({ type: "message", target: null, currentTarget: null });
+    expect(calls).toEqual(["first", "second"]);
+  });
 });
