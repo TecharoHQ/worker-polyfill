@@ -41,7 +41,7 @@ const createWorkerScope = (
   onClose: () => void,
 ): WorkerScope => {
   const scope = {} as WorkerScope;
-  installEventTarget(scope);
+  installEventTarget(scope, { catchErrors: false });
 
   scope.self = scope;
   scope.name = name || "";
