@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
     "target": "es5",
+    "ignoreDeprecations": "6.0",
     "module": "commonjs",
     "lib": ["es2015", "dom", "scripthost"],
+    "rootDir": "src",
     "outDir": "lib",
     "strict": false,
     "declaration": false,
     "sourceMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "lib"]
+  "exclude": ["node_modules", "lib", "test"]
 }
