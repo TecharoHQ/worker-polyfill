@@ -5,7 +5,9 @@
   "main": "lib/worker-polyfill.js",
   "scripts": {
     "prebuild": "rimraf lib",
-    "build": "webpack --mode=production"
+    "build": "webpack --mode=production",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "repository": {
     "type": "git",
@@ -23,9 +25,11 @@
   },
   "homepage": "https://github.com/TecharoHQ/worker-polyfill#readme",
   "devDependencies": {
+    "jsdom": "^25.0.1",
     "rimraf": "^6.0.1",
     "ts-loader": "^9.5.4",
     "typescript": "^6.0.3",
+    "vitest": "^3.2.6",
     "webpack": "^5.108.1",
     "webpack-cli": "^7.1.0"
   }
