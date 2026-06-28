@@ -23,7 +23,7 @@ const config = {
     path: PATHS.bundles,
     filename: '[name].js',
     libraryTarget: 'umd',
-    library: 'Worker',
+    library: 'WorkerPolyfill',
     umdNamedDefine: true
   },
 
